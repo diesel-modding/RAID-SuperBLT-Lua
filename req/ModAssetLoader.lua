@@ -9,7 +9,10 @@ c.DYNAMIC_LOAD_TYPES = {
 }
 
 c.EXTENSION_MAPPINGS = {
-	dds = "texture"
+	dds = "texture",
+	png = "texture",
+	tga = "texture",
+	wem = "stream"
 }
 
 local _dynamic_unloaded_assets = {}
@@ -68,9 +71,12 @@ function c:_converted_xml_file(scope, tag)
 end
 
 function c:LoadAsset(name, file, params, xml_convert)
-	local dot_index = name:find(".", 1, true)
-	local dbpath = name:sub(1, dot_index - 1)
-	local extension = name:sub(dot_index + 1)
+	local dbpath, extension = name:match("([^.]+)%.(.+)")
+	if not dbpath or not extension then
+		BLT:Log(LogLevel.ERROR, string.format("[Assets] Invalid asset '%s' ('%s')", tostring(name), tostring(file)))
+		return
+	end
+
 	extension = c.EXTENSION_MAPPINGS[extension] or extension
 
 	local dyn_package = c.DYNAMIC_LOAD_TYPES[extension] or false
@@ -105,16 +111,20 @@ function c:LoadAsset(name, file, params, xml_convert)
 
 		table.insert(group.assets, spec)
 	else
-		error("Unrecognized load type " .. params.target)
+		BLT:Log(LogLevel.ERROR, string.format("[Assets] Unrecognized load type '%s'", tostring(params.target)))
 	end
 end
 
 function c:LoadAssetGroup(group_name)
-	assert(group_name, "cannot load nil group")
-	local group = self.script_loadable_packages[group_name]
+	if not group_name then
+		BLT:Log(LogLevel.ERROR, "[Assets] Can not load nil group")
+		return
+	end
 
+	local group = self.script_loadable_packages[group_name]
 	if not group then
-		error("Group '" .. group_name .. "' does not exist")
+		BLT:Log(LogLevel.ERROR, string.format("[Assets] Group '%s' does not exist", tostring(group_name)))
+		return
 	end
 
 	if group.loaded then return end
@@ -129,11 +139,15 @@ function c:LoadAssetGroup(group_name)
 end
 
 function c:FreeAssetGroup(group_name)
-	assert(group_name, "cannot free nil group")
-	local group = self.script_loadable_packages[group_name]
+	if not group_name then
+		BLT:Log(LogLevel.ERROR, "[Assets] Can not free nil group")
+		return
+	end
 
+	local group = self.script_loadable_packages[group_name]
 	if not group then
-		error("Group '" .. group_name .. "' does not exist")
+		BLT:Log(LogLevel.ERROR, string.format("[Assets] Group '%s' does not exist", tostring(group_name)))
+		return
 	end
 
 	-- We don't care if the group is loaded or not, as each asset
@@ -202,21 +216,16 @@ local function convert_xml_asset(params)
 	end
 end
 
-local known_types = {
-	png = "texture",
-	tga = "texture"
-}
-
 -- Asset system - independent of any object
 _flush_assets = function(dres)
+	if not Idstring then
+		return -- Skip if we don't have core classes yet
+	end
+
 	dres = dres or (managers and managers.dyn_resource)
-	if not dres then return end
 
-	local next_to_load = {}
-
-	local i = 1
 	for id, asset in pairs(_dynamic_unloaded_assets) do
-		local ext = Idstring(known_types[asset.extension] or asset.extension)
+		local ext = Idstring(asset.extension)
 		local dbpath = Idstring(asset.dbpath)
 		local path = asset.file
 
@@ -225,21 +234,23 @@ _flush_assets = function(dres)
 			asset.xml_convert._done = true
 		end
 
-		if not io.file_is_readable(path) then
-			BLT:Log(LogLevel.ERROR, "[BLT] Cannot load unreadable asset " .. tostring(path))
-			goto continue
-		end
-
-		-- TODO a good way to log this
-		-- log("Loading " .. asset.dbpath .. " " .. asset.extension .. " from " .. path)
-
 		if not asset._entry_created then
+			if not io.file_is_readable(path) then
+				BLT:Log(LogLevel.ERROR, "[Assets] Cannot load unreadable asset " .. tostring(path))
+				_dynamic_unloaded_assets[id] = nil
+				goto continue
+			end
+
 			blt.ignoretweak(dbpath, ext)
 			BLT.AssetManager:CreateEntry(dbpath, ext, path)
 			asset._entry_created = true
 		end
 
-		if asset.dyn_package and not asset._targeted_package then
+		if not asset.dyn_package or asset._targeted_package then
+			-- We're done with this asset, it will be loaded manually or doesn't need loading
+			_dynamic_unloaded_assets[id] = nil
+		elseif dres then
+			-- If DynamicResourceManager exists, load the asset
 			asset._targeted_package = dres.DYN_RESOURCES_PACKAGE
 
 			_currently_loading_assets[asset] = {}
@@ -261,13 +272,11 @@ _flush_assets = function(dres)
 				end
 			end)
 
-			i = i + 1
+			_dynamic_unloaded_assets[id] = nil
 		end
 
 		::continue::
 	end
-
-	_dynamic_unloaded_assets = {}
 end
 Hooks:Add("DynamicResourceManagerCreated", "BLTAssets.DynamicResourceManagerCreated", function(...)
 	local success, err = pcall(_flush_assets, ...)

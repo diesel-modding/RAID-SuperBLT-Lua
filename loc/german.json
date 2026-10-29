@@ -72,6 +72,7 @@
 	"blt_update_now" : "Jetzt aktualisieren",
 	
 	"blt_search" : "Suche",
+	"blt_profile" : "Profil",
 	"blt_default_profile_name" : "Profil $number",
 	"blt_profile_delete" : "Soll das Mod-Profil \"$profile\" wirklich gelöscht werden?",
 	"blt_download_manager" : "Download Manager",

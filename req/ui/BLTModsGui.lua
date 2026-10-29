@@ -88,7 +88,7 @@ function BLTModsGui:_layout()
 
 	-- _list_panel
 	self._list_panel = self._root_panel:panel({
-		h = 690,
+		h = 646,
 		layer = 1,
 		name = "list_panel",
 		w = 448,
@@ -145,7 +145,7 @@ function BLTModsGui:_layout()
 		name = "blt_regular_mods_list",
 		data_source_callback = callback(self, self, "_mods_list_data_source", BLTModsGui.TABS_REGULAR_MODS),
 		scrollable_area_ref = self._regular_mods_list_panel,
-		loop_items = false, -- at the ends the focus moves on (on_menu_move), looping would trap it
+		loop_items = true,
 		selection_enabled = true,
 		padding_top = 2,
 		vertical_spacing = 2,
@@ -158,9 +158,6 @@ function BLTModsGui:_layout()
 		w = self._regular_mods_list_panel:w(),
 		on_item_clicked_callback = callback(self, self, "_on_mod_selected"),
 		on_item_selected_callback = callback(self, self, "_on_mod_selected"),
-		on_menu_move = {
-			down = "blt_search_input"
-		},
 	})
 	self._regular_mods_list_panel:setup_scroll_area()
 
@@ -179,7 +176,7 @@ function BLTModsGui:_layout()
 		name = "blt_core_mods_list",
 		data_source_callback = callback(self, self, "_mods_list_data_source", BLTModsGui.TABS_CORE_MODS),
 		scrollable_area_ref = self._core_mods_list_panel,
-		loop_items = false, -- at the ends the focus moves on (on_menu_move), looping would trap it
+		loop_items = true,
 		selection_enabled = true,
 		padding_top = 2,
 		vertical_spacing = 2,
@@ -191,9 +188,6 @@ function BLTModsGui:_layout()
 		on_mouse_over_sound_event = "highlight",
 		on_item_clicked_callback = callback(self, self, "_on_mod_selected"),
 		on_item_selected_callback = callback(self, self, "_on_mod_selected"),
-		on_menu_move = {
-			down = "blt_search_input"
-		},
 	})
 	self._core_mods_list_panel:setup_scroll_area()
 
@@ -202,10 +196,6 @@ function BLTModsGui:_layout()
 		name = "blt_download_manager_btn",
 		text = self:translate("blt_download_manager", true),
 		on_click_callback = callback(self, self, "clbk_open_download_manager"),
-		on_menu_move = {
-			up = "blt_search_input",
-			right = "blt_profile_btn_name"
-		},
 		x = 6,
 	})
 	self._download_manager_button:set_center_y(880)
@@ -224,7 +214,6 @@ function BLTModsGui:_layout()
 	end
 
 	self:_layout_profile_stepper()
-	self:_layout_navigation()
 
 	if self._regular_mods_list._list_items and (#self._regular_mods_list._list_items > 0) then
 		self:_select_regular_mods_tab()
@@ -357,7 +346,7 @@ function BLTModsGui:_layout_dev_info()
 	self._dev_info_panel:setup_scroll_area()
 end
 
--- [-] [<] name [>] [+], bottom center. Click the name to rename.
+-- [-] [<] name [>] [+], below the search field. Click the name to rename.
 function BLTModsGui:_layout_profile_stepper()
 	local h, name_w, btn_w = 40, 280, 40
 	local font_size = tweak_data.gui.font_sizes.medium
@@ -367,12 +356,11 @@ function BLTModsGui:_layout_profile_stepper()
 		h = h,
 		layer = 5,
 	})
-	panel:set_center_x(self._root_panel:w() / 2)
-	panel:set_bottom(self._root_panel:h() - 8)
+	panel:set_center_x(self._list_panel:center_x())
+	panel:set_center_y(822)
 	self._profile_panel = panel
 
-	-- keyboard / controller: left/right along the stepper, up to the info buttons, left (from the first) to the download manager button
-	local gui = self
+	-- keyboard / controller: left/right along the stepper (controller X jumps in and out, see _toggle_profile_stepper)
 	local function make_button(name, text, x, w, clbk, left, right)
 		local btn = panel:button({
 			name = "blt_profile_btn_" .. name,
@@ -388,21 +376,12 @@ function BLTModsGui:_layout_profile_stepper()
 			highlight_color = tweak_data.gui.colors.raid_red,
 			on_click_callback = callback(self, self, clbk),
 			on_menu_move = {
-				up = "blt_download_manager_btn",
-				left = left and ("blt_profile_btn_" .. left) or "blt_download_manager_btn",
+				left = left and ("blt_profile_btn_" .. left) or nil,
 				right = right and ("blt_profile_btn_" .. right) or nil,
 			},
 		})
 		-- a disabled button's confirm_pressed returns true even when it isn't selected, which swallows
 		-- confirm for every control that comes after it
-		local move_up = btn.move_up
-		function btn:move_up()
-			if self._selected and gui:_select_info_buttons() then
-				self:set_selected(false)
-				return true
-			end
-			return move_up(self)
-		end
 		function btn:confirm_pressed()
 			if not self._selected or self._params.no_click then
 				return false
@@ -444,7 +423,7 @@ function BLTModsGui:_layout_profile_stepper()
 		layer = 5,
 	})
 	search_label:set_x(3)
-	search_label:set_center_y(822) -- above the download manager button
+	search_label:set_center_y(762) -- above the profile stepper
 	local search_x = search_label:right() + 10
 	self._search_input = BLTModsGui._input_field(self._root_panel, {
 		name = "blt_search_input",
@@ -454,13 +433,9 @@ function BLTModsGui:_layout_profile_stepper()
 		capitalize = false,
 		layer = 5,
 		text_changed_callback = callback(self, self, "_on_search_changed"),
-		on_menu_move = {
-			up = "blt_regular_mods_list",
-			down = "blt_download_manager_btn"
-		},
 	})
 	self._search_input:set_x(search_x)
-	self._search_input:set_center_y(822)
+	self._search_input:set_center_y(762)
 	self._search_input._enter_callback = function() end -- the input hides its text when unfocused, so stay focused
 	self._search_input._esc_callback = callback(self, self, "_on_search_done", true)
 
@@ -611,6 +586,33 @@ function BLTModsGui:_layout_info_buttons()
 
 	self._info_buttons = {}
 
+	local move_tbl = {
+		["11"] = {
+			right = "info_button_12",
+			left = nil,
+			up = nil,
+			down = "info_button_21"
+		},
+		["12"] = {
+			right = nil,
+			left = "info_button_11",
+			up = nil,
+			down = "info_button_22"
+		},
+		["21"] = {
+			right = "info_button_22",
+			left = nil,
+			up = "info_button_11",
+			down = nil
+		},
+		["22"] = {
+			right = nil,
+			left = "info_button_21",
+			up = "info_button_12",
+			down = nil
+		},
+	}
+
 	local function make_button(icon, clbk_func, text, row, num, is_default)
 		local icon_is_table = type(icon) == "table"
 		local i = #self._info_buttons + 1
@@ -620,6 +622,7 @@ function BLTModsGui:_layout_info_buttons()
 			on_click_callback = callback(self, self, clbk_func, i),
 			text = text,
 			y = (row == 1) and 0 or 96,
+			on_menu_move = move_tbl[tostring(row) .. tostring(num)],
 			is_default = is_default,
 		})
 		if icon_is_table then -- override fallback
@@ -832,76 +835,30 @@ function BLTModsGui:_on_mod_list_type_changed(tab)
 	end
 end
 
--- arrow keys / dpad: list -> info buttons (the triggers do the same) and between the info buttons
-function BLTModsGui:_layout_navigation()
-	local gui = self
-
-	for _, list in ipairs({ self._regular_mods_list, self._core_mods_list }) do
-		function list:move_right()
-			if self._selected then
-				return gui:_on_column_right()
-			end
-		end
+-- controller X: into the profile stepper, and from there back into the visible list
+function BLTModsGui:_toggle_profile_stepper()
+	if self._profile_renaming then
+		return true
 	end
-
-	-- 2x2 grid, see _layout_info_buttons; moves to the nearest enabled button in that direction
-	local grid = {
-		{ self._info_button_mod_toggle_updates, self._info_button_mod_update_check },
-		{ self._info_button_mod_toggle_enable, self._info_button_mod_contact },
-	}
-	local dirs = { up = { -1, 0 }, down = { 1, 0 }, left = { 0, -1 }, right = { 0, 1 } }
-	for row = 1, 2 do
-		for col = 1, 2 do
-			for dir, step in pairs(dirs) do
-				grid[row][col]["move_" .. dir] = function(btn)
-					if not btn._selected then
-						return
-					end
-					local r, c = row + step[1], col + step[2]
-					while grid[r] and grid[r][c] do
-						local target = grid[r][c]
-						if target._enabled then
-							btn:set_selected(false)
-							target:set_selected(true)
-							return true
-						end
-						r, c = r + step[1], c + step[2]
-					end
-					if dir == "left" then
-						gui:_on_info_left()
-					elseif dir == "down" then
-						gui:_on_info_down()
-					end
-					return true
-				end
-			end
-		end
+	local in_stepper = false
+	for _, btn in ipairs(self._profile_buttons) do
+		in_stepper = in_stepper or btn:is_selected()
 	end
-end
-
--- from the info buttons down to the profile stepper
-function BLTModsGui:_on_info_down()
+	self:_unselect_left_column()
 	self:_unselect_middle_column()
+	self:_deselect_bottom_controls()
 	self._selected_column = BLTModsGui.COLUMN_MODS
-	self._profile_name_button:set_selected(true)
-end
-
--- back from the info buttons into the visible list
-function BLTModsGui:_on_info_left()
-	self:_unselect_middle_column()
-	self._selected_column = BLTModsGui.COLUMN_MODS
-	local list = (self._selected_tab == BLTModsGui.TABS_CORE_MODS) and self._core_mods_list or self._regular_mods_list
-	list:set_selected(true)
-end
-
--- the search field leads back up into whichever list is visible
-function BLTModsGui:_set_nav_list(list_name)
-	self._search_input:set_menu_move_controls({ up = list_name, down = "blt_download_manager_btn" })
+	if in_stepper then
+		local list = (self._selected_tab == BLTModsGui.TABS_CORE_MODS) and self._core_mods_list or self._regular_mods_list
+		list:set_selected(true)
+	else
+		self._profile_name_button:set_selected(true)
+	end
+	return true
 end
 
 function BLTModsGui:_deselect_bottom_controls()
 	self._download_manager_button:set_selected(false)
-	self._search_input:set_selected(false)
 	for _, btn in ipairs(self._profile_buttons) do
 		btn:set_selected(false)
 	end
@@ -909,7 +866,6 @@ end
 
 function BLTModsGui:_select_regular_mods_tab()
 	self:_deselect_bottom_controls()
-	self:_set_nav_list("blt_regular_mods_list")
 	self._core_mods_list:set_selected(false)
 	self._regular_mods_list:set_selected(true)
 
@@ -921,7 +877,6 @@ end
 
 function BLTModsGui:_select_core_mods_tab()
 	self:_deselect_bottom_controls()
-	self:_set_nav_list("blt_core_mods_list")
 	self._regular_mods_list:set_selected(false)
 	self._core_mods_list:set_selected(true)
 
@@ -1574,6 +1529,10 @@ function BLTModsGui:bind_controller_inputs()
 			callback = callback(self, self, "clbk_open_download_manager"),
 			key = Idstring("menu_controller_face_top"),
 		},
+		{
+			callback = callback(self, self, "_toggle_profile_stepper"),
+			key = Idstring("menu_controller_face_left"),
+		},
 	}
 	self:set_controller_bindings(bindings, true)
 
@@ -1593,6 +1552,10 @@ function BLTModsGui:bind_controller_inputs()
 				translated_text = managers.localization:get_default_macros().BTN_Y .. " " ..
 					self:translate("blt_download_manager", true),
 			},
+			{
+				translated_text = managers.localization:get_default_macros().BTN_X .. " " ..
+					self:translate("blt_profile", true),
+			},
 		},
 		keyboard = {
 			{
@@ -1608,8 +1571,6 @@ function BLTModsGui:_additional_active_controls()
 	local res = {
 		self._regular_mods_list,
 		self._core_mods_list,
-		self._download_manager_button,
-		self._search_input,
 	}
 	for _, btn in ipairs(self._profile_buttons) do
 		table.insert(res, btn)

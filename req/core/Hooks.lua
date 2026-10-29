@@ -117,8 +117,8 @@ end
 ---@param id string @Unique name for this prehook
 ---@param pre_call function @Function to be called before `func` on `object`
 function Hooks:PreHook(object, func, id, pre_call)
-	if not object or type(pre_call) ~= "function" then
-		self:_PrePostHookError(func, id)
+	if not object or type(object[func]) ~= "function" or type(pre_call) ~= "function" then
+		BLT:Log(LogLevel.ERROR, string.format("[Hooks] Could not pre hook function '%s' (%s)", tostring(func), tostring(id)))
 		return
 	end
 
@@ -137,14 +137,18 @@ function Hooks:PreHook(object, func, id, pre_call)
 	table.insert(self._function_hooks[object][func].overrides.pre, func_tbl)
 end
 
----Removes a prehook and prevents it from being run
+---Removes a prehook and prevents it from being run  
+---If `object` is provided, only that object is affected; otherwise all objects are processed.
 ---@param id string @Name of the prehook to remove
-function Hooks:RemovePreHook(id)
-	for object_i, object in pairs(self._function_hooks) do
-		for func_i, func in pairs(object) do
-			for override_i, override in ipairs(func.overrides.pre) do
-				if override.id == id then
-					table.remove(func.overrides.pre, override_i)
+---@param object table? @Object to remove the prehook from
+function Hooks:RemovePreHook(id, object)
+	for hooked_object_i, hooked_object in pairs(self._function_hooks) do
+		if not object or hooked_object_i == object then
+			for func_i, func in pairs(hooked_object) do
+				for override_i, override in ipairs(func.overrides.pre) do
+					if override.id == id then
+						table.remove(func.overrides.pre, override_i)
+					end
 				end
 			end
 		end
@@ -158,8 +162,8 @@ end
 ---@param id string @Unique name for this posthook
 ---@param post_call function @Function to be called after `func` on `object`
 function Hooks:PostHook(object, func, id, post_call)
-	if not object or type(post_call) ~= "function" then
-		self:_PrePostHookError(func, id)
+	if not object or type(object[func]) ~= "function" or type(post_call) ~= "function" then
+		BLT:Log(LogLevel.ERROR, string.format("[Hooks] Could not post hook function '%s' (%s)", tostring(func), tostring(id)))
 		return
 	end
 
@@ -178,14 +182,18 @@ function Hooks:PostHook(object, func, id, post_call)
 	table.insert(self._function_hooks[object][func].overrides.post, func_tbl)
 end
 
----Removes a posthook and prevents it from being run
+---Removes a posthook and prevents it from being run  
+---If `object` is provided, only that object is affected; otherwise all objects are processed.
 ---@param id string @Name of the posthook to remove
-function Hooks:RemovePostHook(id)
-	for object_i, object in pairs(self._function_hooks) do
-		for func_i, func in pairs(object) do
-			for override_i, override in ipairs(func.overrides.post) do
-				if override.id == id then
-					table.remove(func.overrides.post, override_i)
+---@param object table? @Object to remove the posthook from
+function Hooks:RemovePostHook(id, object)
+	for hooked_object_i, hooked_object in pairs(self._function_hooks) do
+		if not object or hooked_object_i == object then
+			for func_i, func in pairs(hooked_object) do
+				for override_i, override in ipairs(func.overrides.post) do
+					if override.id == id then
+						table.remove(func.overrides.post, override_i)
+					end
 				end
 			end
 		end
@@ -197,6 +205,11 @@ end
 ---@param func string @Name of the function on `object` override
 ---@param override function @Function to replace the original function `func` with
 function Hooks:OverrideFunction(object, func, override)
+	if not object or type(override) ~= "function" then
+		BLT:Log(LogLevel.ERROR, string.format("[Hooks] Could not override function '%s'", tostring(func)))
+		return
+	end
+
 	if not self._function_hooks[object] or not self._function_hooks[object][func] then
 		object[func] = override
 	else
@@ -222,11 +235,6 @@ function Hooks:GetReturn()
 	if self._current_function_hook and self._current_function_hook.returns then
 		return unpack(Hooks._current_function_hook.returns)
 	end
-end
-
--- Shared function to log hook errors
-function Hooks:_PrePostHookError(func, id)
-	BLT:Log(LogLevel.ERROR, string.format("[Hooks] Could not hook function '%s' (%s)", tostring(func), tostring(id)))
 end
 
 -- Helper to create the hooks table structure and function override

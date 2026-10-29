@@ -4,6 +4,17 @@ This lists the changes between different versions of the RAID-SuperBLT basemod,
 the changes for the DLL are listed in their own changelog.
 Contributors other than maintainers are listed in parenthesis after specific changes.
 
+## 2.3.0
+- mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back
+- mods menu: profile stepper moved between search field and download manager button (no longer overlaps the controller legend)
+- `Hooks:PreHook`/`PostHook` refuse to hook functions that don't exist instead of failing when called, `Hooks:OverrideFunction` checks the override (ported from PAYDAY 2 SuperBLT) (Hoppip)
+- `Hooks:RemovePreHook(id, object)`/`RemovePostHook(id, object)`: optional object filter (ported from PAYDAY 2 SuperBLT) (vojin154)
+- `RequiredScriptType` global: `"PreHook"` or `"PostHook"` while hook scripts run (ported from PAYDAY 2 SuperBLT) (vojin154)
+- warning when a `LuaNetworking` message exceeds the maximum length of 255 characters (ported from PAYDAY 2 SuperBLT) (Hoppip)
+- asset loader creates DB entries as early as possible, only dynamically loaded assets wait for the resource manager; invalid assets/groups are logged instead of erroring (ported from PAYDAY 2 SuperBLT) (Hoppip)
+- asset loader maps `.wem` to `stream`; fixed `FreeAssetGroup` removing png/tga assets with the wrong type
+- XML tweaks skip `<?xml ...?>` declarations (ported from PAYDAY 2 SuperBLT) (Hoppip)
+
 ## 2.2.0
 - mod profiles: named sets of enabled mods, switch/create/rename/delete below the mod list (stored in `blt_data.txt`, the active profile follows the current state)
 - search field above the download manager button: filters the mod list by name, description and author
