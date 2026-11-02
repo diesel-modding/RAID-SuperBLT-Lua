@@ -821,7 +821,7 @@ function BLTMod:_load_updates_xml(scope, tag)
 end
 
 function BLTMod:_load_dependencies_data(data)
-	for id, dependency in ipairs(data) do
+	for id, dependency in pairs(data) do
 		self:AddDependency(id, dependency)
 	end
 end
@@ -891,7 +891,7 @@ function BLTMod:_load_native_module(data)
 end
 
 function BLTMod:_load_scripts_data(data)
-	for _, _data in ipairs(data.scripts or {}) do
+	for _, _data in ipairs(data.scripts or data) do
 		dofile(self:GetPath() .. _data.script_path)
 	end
 end
