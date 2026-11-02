@@ -16,6 +16,7 @@ Contributors other than maintainers are listed in parenthesis after specific cha
 - mods menu: closing it no longer leaks a workspace and a controller hotswap callback, a missing `contact` link target and equal sort keys are handled
 - notifications: removing the shown notification no longer leaves an invalid index, the swipe guard works
 - `MenuHelper`: `AddDivider` honors `no_text = false`, `AddSlider` without value, string back callbacks in `BuildMenu`, components with an update function are not updated twice
+- `RaidMenuHelper:LoadJson`, `LoadMenu` (also used by BeardLib's `<Menu>` module): invalid json is logged instead of raising an error, the class global is set, `get_value` and callbacks given as text work, menus can be loaded again (every menu component manager init)
 
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back

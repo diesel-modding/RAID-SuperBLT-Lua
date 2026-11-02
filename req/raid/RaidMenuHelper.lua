@@ -1,6 +1,13 @@
 BLT.raid_menus = {}
 
 RaidMenuHelper = RaidMenuHelper or {}
+
+-- multi_choice -> MultiChoice, MultiChoice stays as it is
+local function camel_case(str)
+	return (tostring(str):gsub("_?(%a)(%w*)", function(first, rest)
+		return first:upper() .. rest
+	end))
+end
 function RaidMenuHelper:CreateMenu(params)
 	local name = string.gsub(params.name, "%s", "") --remove spaces from names, it doesn't seem to like them that much.
 	local text = params.text or params.name_id or params.name --:shrug:
@@ -34,7 +41,7 @@ function RaidMenuHelper:CreateMenu(params)
 		if managers.menu_component then
 			MenuHelper:AddComponent(component_name, params.class, params.args)
 		else
-			BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "You're building the menu too early! menu component isn't loaded yet.")
+			BLT:Log(LogLevel.ERROR, "[BLTMenuHelper] You're building the menu too early! menu component isn't loaded yet.")
 		end
 	end
 	if params.localize == nil then
@@ -115,7 +122,7 @@ end
 function RaidMenuHelper:InjectIntoAList(menu_comp, injection_point, buttons, list_name)
 	local list = (list_name and menu_comp[list_name]) or menu_comp._list_menu or menu_comp.list_menu_options
 	if not list then
-		BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Menu component given has no list, cannot inject into this menu.")
+		BLT:Log(LogLevel.ERROR, "[BLTMenuHelper] Menu component given has no list, cannot inject into this menu.")
 		return nil
 	end
 	if not list._injected_data_source then
@@ -174,13 +181,14 @@ function RaidMenuHelper:LoadJson(path)
 	if file then
 		local success, data = pcall(function() return json.decode(file:read("*all")) end)
 		file:close()
-		if success then
+		-- json.decode does not raise errors, it returns false for invalid json
+		if success and type(data) == "table" then
 			self:LoadMenu(data, path)
 			return true
 		end
-		BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Failed parsing json file at path '%s': %s", path, data)
+		BLT:Log(LogLevel.ERROR, string.format("[BLTMenuHelper] Failed parsing json file at path '%s': %s", path, tostring(data)))
 	else
-		BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Failed reading json file at path '%s'.")
+		BLT:Log(LogLevel.ERROR, string.format("[BLTMenuHelper] Failed reading json file at path '%s'.", path))
 	end
 	return false
 end
@@ -193,7 +201,7 @@ function RaidMenuHelper:LoadXML(path)
 		self:ConvertXMLData(data)
 		self:LoadMenu(data, path)
 	else
-		BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Failed reading XML file at path '%s'", path)
+		BLT:Log(LogLevel.ERROR, string.format("[BLTMenuHelper] Failed reading XML file at path '%s'", path))
 	end
 	return false
 end
@@ -212,28 +220,33 @@ end
 
 function RaidMenuHelper:LoadMenu(data, path, mod)
 	if not data.name then
-		BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Creation of menu at path '%s' has failed, no menu name given.", tostring(path))
+		BLT:Log(LogLevel.ERROR, string.format("[BLTMenuHelper] Creation of menu at path '%s' has failed, no menu name given.", tostring(path)))
 		return
 	end
 	local clss
 	local get_value
 	local function load_menu()
+		-- this runs on every MenuComponentManager init, so the class name is only resolved once
+		if type(data.class) == "string" then
+			local chunk = loadstring("return " .. data.class)
+			data.class = chunk and chunk()
+		end
 		if data.class then
-			data.class = loadstring("return "..tostring(data.class))()
 			clss = data.class
 		else
 			clss = blt_class(BLTMenu)
-			rawset(_G, clss, data.global_name or data.name.."Menu")
+			rawset(_G, data.global_name or data.name .. "Menu", clss)
 		end
 		if data.get_value and clss then
-			if data.get_value:starts("callback") then
-				get_value = loadstring("return "..tostring(data.get_value))()
-			elseif clss[data.callback] then
-				get_value = callback(clss, clss, data.get_value)
-			elseif type(data.get_value) == "function" then
+			if type(data.get_value) == "function" then
 				get_value = data.get_value
+			elseif string.begins(data.get_value, "callback") then
+				local chunk = loadstring("return " .. tostring(data.get_value))
+				get_value = chunk and chunk()
+			elseif clss[data.get_value] then
+				get_value = callback(clss, clss, data.get_value)
 			else
-				BLT:Log(LogLevel.WARN, "BLTMenuHelper", "Get value function given in menu named '%s' doesn't exist.", tostring(data.name))
+				BLT:Log(LogLevel.WARN, string.format("[BLTMenuHelper] Get value function given in menu named '%s' doesn't exist.", tostring(data.name)))
 			end
 		end
 		RaidMenuHelper:CreateMenu({
@@ -249,21 +262,22 @@ function RaidMenuHelper:LoadMenu(data, path, mod)
 			clss._items_data = {}
 			for k, item in ipairs(data) do
 				if type(item) == "table" and item.type then
-					-- FIXME?: string.CamelCase ??
-					item.type = string.CamelCase(item.type) -- write the types how you want(multi_choice, MultiChoice)
+					item.type = camel_case(item.type) -- write the types how you want(multi_choice, MultiChoice)
 					if item.type == "Menu" then
 						item.inject_menu = item.inject_menu or data.name
 						item.get_value = item.get_value or data.get_value
 						item.localize = Utils:FirstNonNil(item.localize, data.localize)
 						self:LoadMenu(item, path, mod)
 					else
-						if item.callback then
+						-- already a function when the menu is loaded again
+						if type(item.callback) == "string" then
 							if string.begins(item.callback, "callback") then
-								item.callback = loadstring("return "..tostring(item.callback))
+								local chunk = loadstring("return " .. item.callback)
+								item.callback = chunk and chunk()
 							elseif clss[item.callback] then
 								item.callback = callback(clss, clss, item.callback)
 							else
-								BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Callback given to item named '%s' in menu named '%s' doesn't exist.", tostring(item.name), tostring(data.name))
+								BLT:Log(LogLevel.ERROR, string.format("[BLTMenuHelper] Callback given to item named '%s' in menu named '%s' doesn't exist.", tostring(item.name), tostring(data.name)))
 							end
 						end
 						table.insert(clss._items_data, item)
@@ -272,7 +286,7 @@ function RaidMenuHelper:LoadMenu(data, path, mod)
 			end
 			clss._get_value = get_value
 		else
-			BLT:Log(LogLevel.ERROR, "BLTMenuHelper", "Failed to create menu named '%s', invalid class given!", tostring(data.menu.name))
+			BLT:Log(LogLevel.ERROR, string.format("[BLTMenuHelper] Failed to create menu named '%s', invalid class given!", tostring(data.name)))
 		end
 	end
 	if managers and managers.menu_component then
