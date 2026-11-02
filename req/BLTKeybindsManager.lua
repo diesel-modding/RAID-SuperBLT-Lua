@@ -130,7 +130,7 @@ function BLTKeybind:Execute()
 		dofile(path)
 	end
 	if self:Callback() then
-		self:Callback()()
+		BLT:SafeCall("keybind '" .. tostring(self:Id()) .. "'", self:Callback())
 	end
 end
 
