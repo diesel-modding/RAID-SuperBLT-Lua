@@ -18,7 +18,7 @@ function c.TraverseXML(xml, parent_scope, callbacks, allow_unknown)
 				local first, last = val:find("#{%a[%w_]-}")
 				if not first then break end
 
-				local _name = val:sub(first + 2, last - first)
+				local _name = val:sub(first + 2, last - 1)
 				local target_var = scope[_name]
 
 				assert(target_var, "Trying to use missing parameter '"
@@ -33,7 +33,7 @@ function c.TraverseXML(xml, parent_scope, callbacks, allow_unknown)
 					BLT:Log(LogLevel.WARN, "Trying to append to missing parameter '" .. name
 							.. "' in " .. tag._doc.filename)
 				end
-				scope[name] = scope[name] .. val
+				scope[name] = (scope[name] or "") .. val
 			else
 				scope[name] = val
 			end
