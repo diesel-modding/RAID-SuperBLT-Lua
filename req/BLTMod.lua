@@ -426,11 +426,15 @@ function BLTMod:GetContact()
 	return self.contact
 end
 
+---Returns the first web address in the contact, or `nil`
+---The result is safe to hand to a shell (see `Utils.IsSafeUrl`)
+---@return string?
+function BLTMod:GetContactUrl()
+	return self.contact and string.match(self.contact, "https?://[^%s\"<>|^`]+") or nil
+end
+
 function BLTMod:IsContactWebsite()
-	if string.find(self.contact, "(https?://[%w-_%.%?%.:/%+=&]+)") then
-		return true
-	end
-	return false
+	return self:GetContactUrl() ~= nil
 end
 
 function BLTMod:GetPriority()

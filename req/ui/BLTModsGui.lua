@@ -1414,7 +1414,7 @@ function BLTModsGui:_on_info_button_contact_clicked(i)
 	if not self._selected_mod:GetContact() or not self._selected_mod:IsContactWebsite() then
 		return
 	end
-	Utils.OpenUrlSafe(self._selected_mod:GetContact())
+	Utils.OpenUrlSafe(self._selected_mod:GetContactUrl())
 end
 
 function BLTModsGui:_on_info_button_toggle_auto_updates_clicked(i)
