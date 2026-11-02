@@ -110,6 +110,7 @@
             <post hook_id="lib/managers/menu/menucomponentmanager" :script_path="MenuComponentManager.lua"/>
             <post hook_id="lib/network/base/basenetworksession" :script_path="BaseNetworkSession.lua"/>
             <post hook_id="lib/network/base/networkmanager" :script_path="NetworkManager.lua"/>
+            <post hook_id="lib/network/base/networkpeer" :script_path="NetworkPeer.lua"/>
             <post hook_id="lib/managers/dynamicresourcemanager" :script_path="DynamicResourceManager.lua"/>
         </group>
     </hooks>

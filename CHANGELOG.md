@@ -4,6 +4,9 @@ This lists the changes between different versions of the RAID-SuperBLT basemod,
 the changes for the DLL are listed in their own changelog.
 Contributors other than maintainers are listed in parenthesis after specific changes.
 
+## 2.4.0
+- `LuaNetworking` splits messages over the 255 character limit into fragments for peers that announce support (older versions still get the message as before, with a warning); what it knows about a peer is forgotten when the peer leaves or a new session starts, nested chunking messages are dropped
+
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back
 - mods menu: profile stepper moved between search field and download manager button (no longer overlaps the controller legend)
