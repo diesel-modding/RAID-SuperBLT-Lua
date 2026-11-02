@@ -1,6 +1,88 @@
 _G.Hooks = Hooks or {}
 Hooks._registered_hooks = Hooks._registered_hooks or {}
 Hooks._function_hooks = Hooks._function_hooks or {}
+Hooks._call_depth = Hooks._call_depth or 0
+Hooks._compact_pending = Hooks._compact_pending or false
+
+--------------------------------------------------------------------------------
+-- Error isolation
+-- An error in one mod's hook must not keep the others (or the game function) from running.
+-- Errors are logged with a traceback, the same error is only logged once every few seconds,
+-- since hooks like updates would otherwise flood the log every frame.
+
+local ERROR_LOG_INTERVAL = 5
+local ERROR_LOG_MAX_ENTRIES = 200
+local last_logged = {}
+local last_logged_count = 0
+
+local function error_handler(err)
+	return debug.traceback(tostring(err), 2)
+end
+
+-- the description of the failed call is only built when an error happens (these run every frame)
+local function report_error(kind, a, b, err)
+	local now = os.clock()
+	local what = (b ~= nil) and string.format("%s '%s' (%s)", kind, tostring(a), tostring(b)) or string.format("%s '%s'", kind, tostring(a))
+	-- only the message (first line) identifies an error, the traceback differs with the call site
+	local key = what .. "|" .. tostring(err):match("^[^\n]*"):sub(1, 300)
+	local last = last_logged[key]
+	if last and now - last < ERROR_LOG_INTERVAL then
+		return
+	end
+	if not last then
+		if last_logged_count >= ERROR_LOG_MAX_ENTRIES then
+			last_logged = {}
+			last_logged_count = 0
+		end
+		last_logged_count = last_logged_count + 1
+	end
+	last_logged[key] = now
+	BLT:Log(LogLevel.ERROR, string.format("[Hooks] Error in %s: %s", what, tostring(err)))
+end
+
+local function finish_safe_call(kind, a, b, ok, ...)
+	if not ok then
+		report_error(kind, a, b, (...))
+	end
+	return ok, ...
+end
+
+---Calls `func` in protected mode, errors are logged
+---@param what string @Description for the log
+---@param func function
+---@param ... any @Arguments for `func`
+---@return boolean @`false` if `func` raised an error
+---@return any ... @The return values of `func`
+function BLT:SafeCall(what, func, ...)
+	return finish_safe_call("call", what, nil, blt.xpcall(func, error_handler, ...))
+end
+
+-- calls a hook function protected, returns its return values as a table, or nil if it raised an error
+local function call_packed(kind, a, b, func, ...)
+	local results = { finish_safe_call(kind, a, b, blt.xpcall(func, error_handler, ...)) }
+	if not results[1] then
+		return nil
+	end
+	return { unpack(results, 2, table.maxn(results)) }
+end
+
+-- Hooks can be removed while a hook is being called (also by the called function itself),
+-- so a removal during a call only marks the entry and the lists are cleaned up afterwards.
+local function end_call(self)
+	self._call_depth = self._call_depth - 1
+	if self._call_depth == 0 and self._compact_pending then
+		self._compact_pending = false
+		for _, list in pairs(self._registered_hooks) do
+			if type(list) == "table" then
+				for i = #list, 1, -1 do
+					if list[i].removed then
+						table.remove(list, i)
+					end
+				end
+			end
+		end
+	end
+end
 
 ---Registers a hook so that functions can be added to it, and later called
 ---@param key string @Unique hook name
@@ -8,7 +90,7 @@ function Hooks:RegisterHook(key)
 	self._registered_hooks[key] = self._registered_hooks[key] or {}
 end
 
----Registers a hook so that functions can be added to it, and later called  
+---Registers a hook so that functions can be added to it, and later called
 ---Functionally the same as `Hooks:RegisterHook`
 ---@param key string @Unique hook name
 function Hooks:Register(key)
@@ -25,6 +107,7 @@ function Hooks:AddHook(key, id, func)
 	for k, v in pairs(self._registered_hooks[key]) do
 		if v.id == id then
 			v.func = func
+			v.removed = nil
 			return
 		end
 	end
@@ -36,7 +119,7 @@ function Hooks:AddHook(key, id, func)
 	table.insert(self._registered_hooks[key], tbl)
 end
 
----Adds a function call to a hook, so that it will be called when the hook is called  
+---Adds a function call to a hook, so that it will be called when the hook is called
 ---Functionally the same as `Hooks:AddHook`
 ---@param key string @Name of the hook to be called on
 ---@param id string @Unique name for this specific function call
@@ -51,7 +134,7 @@ function Hooks:UnregisterHook(key)
 	self._registered_hooks[key] = nil
 end
 
----Removes a hook, so that it will not call any functions  
+---Removes a hook, so that it will not call any functions
 ---Functionally the same as `Hooks:UnregisterHook`
 ---@param key string @Name of the hook to remove
 function Hooks:Unregister(key)
@@ -61,11 +144,18 @@ end
 ---Removes a hooked function call with the specified id to prevent it from being called
 ---@param id string @Name of the function call to remove
 function Hooks:Remove(id)
-	for k, v in pairs(self._registered_hooks) do
-		if type(v) == "table" then
-			for x, y in pairs(v) do
-				if y.id == id then
-					y = nil
+	for _, list in pairs(self._registered_hooks) do
+		if type(list) == "table" then
+			for i = #list, 1, -1 do
+				local entry = list[i]
+				if entry.id == id then
+					if self._call_depth > 0 then
+						entry.removed = true
+						entry.func = nil
+						self._compact_pending = true
+					else
+						table.remove(list, i)
+					end
 				end
 			end
 		end
@@ -73,44 +163,62 @@ function Hooks:Remove(id)
 end
 
 ---Calls a specified hook, and all of its hooked functions
+---An error in a hooked function is logged and does not stop the other functions
 ---@param key string @Name of the hook to call
 ---@param ... any @Arguments to pass to the hooked functions
 function Hooks:Call(key, ...)
-	if not self._registered_hooks[key] then
+	local list = self._registered_hooks[key]
+	if not list then
 		return
 	end
 
-	for k, v in pairs(self._registered_hooks[key]) do
-		if v then
-			if type(v.func) == "function" then
-				v.func(...)
-			end
+	self._call_depth = self._call_depth + 1
+	-- functions added while the hook is being called are called as well
+	local i = 1
+	while true do
+		local v = list[i]
+		if not v then
+			break
 		end
+		if type(v.func) == "function" then
+			finish_safe_call("hook", key, v.id, blt.xpcall(v.func, error_handler, ...))
+		end
+		i = i + 1
 	end
+	end_call(self)
 end
 
 ---Calls a specified hook and returns the first non nil value(s) returned by a hooked function
+---An error in a hooked function is logged and does not stop the other functions
 ---@param key string @Name of the hook to call
 ---@param ... any @Arguments to pass to the hooked functions
 ---@return any ... @The value(s) returned by a hooked function
 function Hooks:ReturnCall(key, ...)
-	if not self._registered_hooks[key] then
+	local list = self._registered_hooks[key]
+	if not list then
 		return
 	end
 
-	for k, v in pairs(self._registered_hooks[key]) do
-		if v then
-			if type(v.func) == "function" then
-				local r = { v.func(...) }
-				if next(r) == 1 then
-					return unpack(r)
-				end
+	self._call_depth = self._call_depth + 1
+	local i = 1
+	while true do
+		local v = list[i]
+		if not v then
+			break
+		end
+		if type(v.func) == "function" then
+			local r = call_packed("hook", key, v.id, v.func, ...)
+			if r and r[1] ~= nil then
+				end_call(self)
+				return unpack(r, 1, table.maxn(r))
 			end
 		end
+		i = i + 1
 	end
+	end_call(self)
 end
 
----Hooks a function to be called before the specified function on a specified object  
+---Hooks a function to be called before the specified function on a specified object
 ---If `pre_call` returns anything, it will be used if neither the original function nor any hooks coming after this one return anything
 ---@param object any @Object for the hooked function to be called on
 ---@param func string @Name of the function on `object` to run `pre_call` before
@@ -137,7 +245,7 @@ function Hooks:PreHook(object, func, id, pre_call)
 	table.insert(self._function_hooks[object][func].overrides.pre, func_tbl)
 end
 
----Removes a prehook and prevents it from being run  
+---Removes a prehook and prevents it from being run
 ---If `object` is provided, only that object is affected; otherwise all objects are processed.
 ---@param id string @Name of the prehook to remove
 ---@param object table? @Object to remove the prehook from
@@ -155,7 +263,7 @@ function Hooks:RemovePreHook(id, object)
 	end
 end
 
----Hooks a function to be called after the specified function on a specified object  
+---Hooks a function to be called after the specified function on a specified object
 ---If `post_call` returns anything, it will override the return value(s) of the original function and other hooks coming before this one
 ---@param object any @Object for the hooked function to be called on
 ---@param func string @Name of the function on `object` to run `post_call` after
@@ -182,7 +290,7 @@ function Hooks:PostHook(object, func, id, post_call)
 	table.insert(self._function_hooks[object][func].overrides.post, func_tbl)
 end
 
----Removes a posthook and prevents it from being run  
+---Removes a posthook and prevents it from being run
 ---If `object` is provided, only that object is affected; otherwise all objects are processed.
 ---@param id string @Name of the posthook to remove
 ---@param object table? @Object to remove the posthook from
@@ -259,11 +367,16 @@ function Hooks:_ChkCreateTableStructure(object, func)
 		local function_hook = self._function_hooks[object][func]
 		local hook_return
 
-		-- Call prehooks
+		-- a call of the same function from within a hook must not touch the returns of this call,
+		-- and returns of an earlier call must not leak into this one
+		local outer_returns = function_hook.returns
+		function_hook.returns = nil
+
+		-- Call prehooks (errors are logged, the other hooks and the original function still run)
 		for k, v in ipairs(function_hook.overrides.pre) do
 			self._current_function_hook = function_hook
-			hook_return = { v.func(...) }
-			if next(hook_return) then
+			hook_return = call_packed("prehook of", func, v.id, v.func, ...)
+			if hook_return and next(hook_return) then
 				function_hook.returns = hook_return
 			end
 		end
@@ -277,16 +390,16 @@ function Hooks:_ChkCreateTableStructure(object, func)
 		-- Call posthooks
 		for k, v in ipairs(function_hook.overrides.post) do
 			self._current_function_hook = function_hook
-			hook_return = { v.func(...) }
-			if next(hook_return) then
+			hook_return = call_packed("posthook of", func, v.id, v.func, ...)
+			if hook_return and next(hook_return) then
 				function_hook.returns = hook_return
 			end
 		end
 
-		if function_hook.returns then
-			hook_return = function_hook.returns
-			function_hook.returns = nil
+		hook_return = function_hook.returns
+		function_hook.returns = outer_returns
 
+		if hook_return then
 			return unpack(hook_return)
 		end
 	end
