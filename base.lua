@@ -175,7 +175,7 @@ function BLT:RunHookTable(hooks_table, path)
 	if not hooks_table or not hooks_table[path] then
 		return false
 	end
-	for i, hook_data in pairs(hooks_table[path]) do
+	for i, hook_data in ipairs(hooks_table[path]) do
 		self:RunHookFile(path, hook_data)
 	end
 end
@@ -243,7 +243,7 @@ function BLT:FindMods()
 				if valid then
 					table.insert(mods_list, new_mod)
 				else
-					self:Log(LogLevel.ERROR, "[BLT] Attempted to load mod.txt or supermod.xml, mod is invalid." .. tostring(mod_path))
+					self:Log(LogLevel.ERROR, "[BLT] Attempted to load mod.txt or supermod.xml, mod is invalid. " .. tostring(mod_path))
 				end
 			end
 		end
