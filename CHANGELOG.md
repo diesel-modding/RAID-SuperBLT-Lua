@@ -17,6 +17,7 @@ Contributors other than maintainers are listed in parenthesis after specific cha
 - notifications: removing the shown notification no longer leaves an invalid index, the swipe guard works
 - `MenuHelper`: `AddDivider` honors `no_text = false`, `AddSlider` without value, string back callbacks in `BuildMenu`, components with an update function are not updated twice
 - `RaidMenuHelper:LoadJson`, `LoadMenu` (also used by BeardLib's `<Menu>` module): invalid json is logged instead of raising an error, the class global is set, `get_value` and callbacks given as text work, menus can be loaded again (every menu component manager init)
+- smaller: keybinds without a key are not saved, a failing keybind callback is isolated, dependency callbacks get the dependency, mod errors are not listed twice, key binding while no menu is active
 
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back

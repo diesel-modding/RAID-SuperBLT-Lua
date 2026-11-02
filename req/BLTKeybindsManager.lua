@@ -314,7 +314,7 @@ Hooks:Add("BLTOnSaveData", "BLTOnSaveData.BLTKeybindsManager", function(save_dat
 	save_data.keybinds = {}
 
 	for _, bind in pairs(BLT.Keybinds:keybinds()) do
-		if bind:Key() ~= "" then
+		if next(bind:Keys()) then
 			local data = {
 				id = bind:Id()
 			}
