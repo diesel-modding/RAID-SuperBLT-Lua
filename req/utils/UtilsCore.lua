@@ -469,7 +469,6 @@ function Utils._setup_fixed_fonts_table()
 			[20] = tweak_data.gui.fonts.lato_outlined_20,
 		},
 	}
-	table.sort(Utils._fixed_fonts)
 
 	-- pre-cache font sizes
 	Utils._fixed_font_sizes = {}
