@@ -1444,6 +1444,10 @@ function BLTModsGui:clbk_check_for_updates_finished(cache)
 		name = data.mod:GetName()
 		-- An update for this mod needs updating
 		requires_update = data.requires_update or requires_update
+		-- a failed check must not be reported as "up to date"
+		if data.reason then
+			error_reason = data.reason
+		end
 
 		-- Add the update to the download manager
 		if data.requires_update then

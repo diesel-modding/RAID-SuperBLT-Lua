@@ -55,17 +55,23 @@ function BLTUpdate:CheckForUpdates(clbk)
 		if self.provider == "modworkshop" then
 			dohttpreq("https://api.modworkshop.net/mods/" .. self:GetId() .. "/version",
 				function(version, http_id, request_info)
-					if version then
-						self:clbk_got_update_data(clbk, {
+					-- a failed request must still finish the check (clbk_got_update_data reports it)
+					local data = nil
+					if not string.is_nil_or_empty(version) then
+						data = {
 							ident = self:GetId(),
 							version = version,
 							download_url = "https://api.modworkshop.net/mods/" .. self:GetId() .. "/download",
 							patchnotes_url = self.misc_data and self.misc_data.patchnotes_url or ("https://modworkshop.net/mod/" .. self:GetId() .. "?tab=changelog")
-						}, http_id, request_info)
+						}
 					end
+					self:clbk_got_update_data(clbk, data, http_id, request_info)
 				end)
 		else
-			BLT:Log(LogLevel.ERROR, "Unknown update provider: " .. self.provider)
+			BLT:Log(LogLevel.ERROR, "Unknown update provider: " .. tostring(self.provider))
+			self._error = "Unknown update provider."
+			self._requesting_updates = false
+			self:_run_update_callback(clbk, false, self._error)
 		end
 	else
 		-- by superblt meta data
@@ -85,7 +91,7 @@ function BLTUpdate:clbk_got_update_data(clbk, json_data, http_id, request_info)
 	end
 
 	local server_data = type(json_data) == "string" and json.decode(json_data) or {json_data}
-	if server_data then
+	if type(server_data) == "table" then
 		for _, data in pairs(server_data) do
 			if data.ident == self:GetId() then
 				BLT:Log(LogLevel.INFO, string.format("[Updates] Received update data for update id '%s'", self:GetId()))
@@ -224,7 +230,7 @@ function BLTUpdate:GetDisallowCallback()
 end
 
 function BLTUpdate:GetPatchNotes()
-	return (self._update_data and self._update_data.patchnotes_url) or self.host.patchnotes
+	return (self._update_data and self._update_data.patchnotes_url) or (self.host and self.host.patchnotes)
 end
 
 function BLTUpdate:IsCritical()
@@ -245,7 +251,7 @@ function BLTUpdate:GetDownloadURL()
 		return self._update_data.download_url
 	end
 
-	return self.host.download
+	return self.host and self.host.download
 end
 
 function BLTUpdate:GetUpdateMiscData()
