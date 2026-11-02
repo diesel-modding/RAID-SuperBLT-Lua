@@ -15,6 +15,7 @@ Contributors other than maintainers are listed in parenthesis after specific cha
 - XML: `#{name}` is substituted anywhere in a value (not only at its start), appending to a missing parameter no longer raises an error; `hook_id` is case insensitive, `*` hooks no longer raise an error
 - mods menu: closing it no longer leaks a workspace and a controller hotswap callback, a missing `contact` link target and equal sort keys are handled
 - notifications: removing the shown notification no longer leaves an invalid index, the swipe guard works
+- `MenuHelper`: `AddDivider` honors `no_text = false`, `AddSlider` without value, string back callbacks in `BuildMenu`, components with an update function are not updated twice
 
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back
