@@ -376,7 +376,19 @@ function _G.table.list_to_set(list)
 	return rtn
 end
 
+---Checks if a string is a plain web address that is safe to hand to a shell
+---@param url any
+---@return boolean
+function Utils.IsSafeUrl(url)
+	return type(url) == "string" and url:match("^https?://[^%s\"<>|^`]+$") ~= nil
+end
+
 function Utils.OpenUrlSafe(url)
+	if not Utils.IsSafeUrl(url) then
+		BLT:Log(LogLevel.ERROR, "[BLT] Refused to open an unsafe url: " .. tostring(url))
+		return
+	end
+
 	QuickMenu:new(
 		managers.localization:text("blt_openurl_title"),
 		string.format(Steam and Steam:overlay_enabled() and managers.localization:text("blt_openurl_text_steamoverlay") or managers.localization:text("blt_openurl_text_browser"), url),
@@ -397,10 +409,16 @@ function Utils.OpenUrlSafe(url)
 end
 
 function Utils.OpenUrl(url)
+	if not Utils.IsSafeUrl(url) then
+		BLT:Log(LogLevel.ERROR, "[BLT] Refused to open an unsafe url: " .. tostring(url))
+		return
+	end
+
 	if Steam and Steam:overlay_enabled() then
 		Steam:overlay_activate("url", url)
 	else
-		os.execute("cmd /c start " .. url)
+		-- quoted, so that characters like & stay part of the url
+		os.execute('cmd /c start "" "' .. url .. '"')
 	end
 end
 
@@ -451,7 +469,6 @@ function Utils._setup_fixed_fonts_table()
 			[20] = tweak_data.gui.fonts.lato_outlined_20,
 		},
 	}
-	table.sort(Utils._fixed_fonts)
 
 	-- pre-cache font sizes
 	Utils._fixed_font_sizes = {}

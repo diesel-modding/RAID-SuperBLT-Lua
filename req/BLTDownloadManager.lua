@@ -315,14 +315,18 @@ function BLTDownloadManager:clbk_download_finished(p, data, http_id, request_inf
 			return
 		end
 
-		-- Remove old installation, unless we're installing a mod (via dependencies)
+		-- Move the old installation out of the way (it is only removed once the new one is in place),
+		-- unless we're installing a mod (via dependencies)
+		local backup_path = nil
 		if not download.update:IsInstall() then
 			wait()
 			if file.DirectoryExists(install_path) then
-				BLT:Log(LogLevel.INFO, string.format("[Downloads] Removing old installation of '%s'...", download_name))
-				if not io.remove_directory_and_files(install_path) then
+				BLT:Log(LogLevel.INFO, string.format("[Downloads] Backing up old installation of '%s'...", download_name))
+				-- in the downloads directory, which is not scanned for mods
+				backup_path = Application:nice_path(BLTModManager.Constants:DownloadsDirectory() .. tostring(http_id) .. "_old")
+				if not file.MoveDirectory(install_path, backup_path) then
 					BLT:Log(LogLevel.ERROR,
-						string.format("[Downloads] Failed to delete old installation of '%s'", download_name))
+						string.format("[Downloads] Failed to move old installation of '%s' out of the way", download_name))
 					set_state("failed")
 					cleanup()
 					return
@@ -336,9 +340,22 @@ function BLTDownloadManager:clbk_download_finished(p, data, http_id, request_inf
 		if not move_success then
 			BLT:Log(LogLevel.ERROR,
 				string.format("[Downloads] Failed to move installation directory of '%s'", download_name))
+			if backup_path then
+				if file.MoveDirectory(backup_path, install_path) then
+					BLT:Log(LogLevel.INFO, string.format("[Downloads] Restored old installation of '%s'", download_name))
+				else
+					BLT:Log(LogLevel.ERROR,
+						string.format("[Downloads] Could not restore old installation of '%s', it is in '%s'", download_name, backup_path))
+				end
+			end
 			set_state("failed")
 			cleanup()
 			return
+		end
+
+		if backup_path and not io.remove_directory_and_files(backup_path) then
+			BLT:Log(LogLevel.WARN,
+				string.format("[Downloads] Could not remove the backup of the old installation of '%s' ('%s')", download_name, backup_path))
 		end
 
 		-- Mark download as complete
@@ -375,7 +392,9 @@ function BLTDownloadManager:flush_complete_downloads()
 
 			-- Remove the pending download
 			local _, idx = self:get_pending_download(download.update)
-			table.remove(self._pending_downloads, idx)
+			if idx then
+				table.remove(self._pending_downloads, idx)
+			end
 
 			-- trigger download_removed event
 			self:call_event_handlers(BLTDownloadManager.EVENTS.download_removed)
@@ -396,7 +415,7 @@ end
 
 function BLTDownloadManager:call_event_handlers(event, download)
 	for _, data in pairs(self._event_handlers[event]) do
-		if (data.update == nil) or (data.update == download.update) then
+		if (data.update == nil) or (download and data.update == download.update) then
 			data.callback(download)
 		end
 	end

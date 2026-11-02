@@ -21,6 +21,15 @@ BLTMod._tags = {
 	tweak = "",
 }
 
+local function add_error(self, err)
+	for _, existing in ipairs(self._errors) do
+		if existing == err then
+			return
+		end
+	end
+	table.insert(self._errors, err)
+end
+
 function BLTMod:init(identifier, data, path)
 	if not identifier or not path then
 		return false
@@ -170,13 +179,13 @@ function BLTMod:PostInit()
 	-- The mod isn't enabled for the current platform
 	-- Check dependencies are installed for this mod
 	if not self:AreDependenciesInstalled() then
-		table.insert(self._errors, "blt_mod_missing_dependencies")
+		add_error(self, "blt_mod_missing_dependencies")
 		self:RetrieveDependencies()
 		self:SetEnabled(false, true)
 	end
 
 	if self.min_sblt_version and BLT:CompareVersions(BLT:GetBaseVersion(), self.min_sblt_version) == 2 then
-		table.insert(self._errors, "blt_mod_info_min_sblt_ver_not_met")
+		add_error(self, "blt_mod_info_min_sblt_ver_not_met")
 		self:SetEnabled(false, true)
 	end
 
@@ -301,6 +310,7 @@ end
 
 function BLTMod:AddHook(data_key, hook_id, script, destination, wildcards_destination, game)
 	self.hooks[data_key] = self.hooks[data_key] or {}
+	hook_id = hook_id and hook_id:lower() -- the require override looks hooks up in lower case
 
 	-- Add hook to info table
 	local unique = true
@@ -426,11 +436,15 @@ function BLTMod:GetContact()
 	return self.contact
 end
 
+---Returns the first web address in the contact, or `nil`
+---The result is safe to hand to a shell (see `Utils.IsSafeUrl`)
+---@return string?
+function BLTMod:GetContactUrl()
+	return self.contact and string.match(self.contact, "https?://[^%s\"<>|^`]+") or nil
+end
+
 function BLTMod:IsContactWebsite()
-	if string.find(self.contact, "(https?://[%w-_%.%?%.:/%+=&]+)") then
-		return true
-	end
-	return false
+	return self:GetContactUrl() ~= nil
 end
 
 function BLTMod:GetPriority()
@@ -642,7 +656,7 @@ function BLTMod:AreDependenciesInstalled()
 				if not mod:IsEnabled() then
 					installed = false
 					table.insert(self.disabled_dependencies, mod)
-					table.insert(self._errors, "blt_mod_dependency_disabled")
+					add_error(self, "blt_mod_dependency_disabled")
 				end
 				break
 			end
@@ -816,7 +830,7 @@ function BLTMod:_load_updates_xml(scope, tag)
 end
 
 function BLTMod:_load_dependencies_data(data)
-	for id, dependency in ipairs(data) do
+	for id, dependency in pairs(data) do
 		self:AddDependency(id, dependency)
 	end
 end
@@ -849,10 +863,10 @@ end
 function BLTMod:_load_hooks_xml(_scope, tag)
 	Utils.IO.TraverseXML(tag, _scope, {
 		pre = function(scope)
-			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.pre)
+			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.pre, BLT.hook_tables.wildcards)
 		end,
 		post = function(scope)
-			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.post)
+			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.post, BLT.hook_tables.wildcards)
 		end,
 		entry = function(scope)
 			BLT:RunHookFile(scope.script_path, {
@@ -886,7 +900,7 @@ function BLTMod:_load_native_module(data)
 end
 
 function BLTMod:_load_scripts_data(data)
-	for _, _data in ipairs(data.scripts or {}) do
+	for _, _data in ipairs(data.scripts or data) do
 		dofile(self:GetPath() .. _data.script_path)
 	end
 end

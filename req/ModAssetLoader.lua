@@ -230,7 +230,8 @@ _flush_assets = function(dres)
 		local path = asset.file
 
 		if asset.xml_convert and not asset.xml_convert._done then
-			convert_xml_asset(asset.xml_convert)
+			-- an invalid source file must not stop the other assets, the asset itself is then reported as unreadable
+			BLT:SafeCall("xml asset convert", convert_xml_asset, asset.xml_convert)
 			asset.xml_convert._done = true
 		end
 

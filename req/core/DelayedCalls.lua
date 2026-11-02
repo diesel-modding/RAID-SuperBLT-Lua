@@ -21,7 +21,8 @@ function DelayedCalls:Update(time, deltaTime)
 			self._remove_queue[k] = nil
 		elseif v.currentTime > v.timeToWait then
 			if v.functionCall then
-				v.functionCall()
+				-- an error must not drop the calls that are still waiting in this update
+				BLT:SafeCall("DelayedCall '" .. tostring(k) .. "'", v.functionCall)
 			end
 		else
 			-- If a call with that id already exists, it has been added during call iteration

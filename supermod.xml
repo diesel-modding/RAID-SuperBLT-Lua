@@ -4,7 +4,7 @@
     description="The collection of Lua files that allow the BLT hook to function."
     author="ZNix, James Wilkinson, RAIDModding"
     contact="https://modworkshop.net/mod/49744"
-    version="2.3.0"
+    version="2.4.0"
     priority="1001"
     image="assets/guis/blt/icon.png"
     color="255 0 255"
@@ -110,6 +110,7 @@
             <post hook_id="lib/managers/menu/menucomponentmanager" :script_path="MenuComponentManager.lua"/>
             <post hook_id="lib/network/base/basenetworksession" :script_path="BaseNetworkSession.lua"/>
             <post hook_id="lib/network/base/networkmanager" :script_path="NetworkManager.lua"/>
+            <post hook_id="lib/network/base/networkpeer" :script_path="NetworkPeer.lua"/>
             <post hook_id="lib/managers/dynamicresourcemanager" :script_path="DynamicResourceManager.lua"/>
         </group>
     </hooks>

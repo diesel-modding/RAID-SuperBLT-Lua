@@ -13,8 +13,9 @@ function call_next_update_functions()
 	local current = _next_update_funcs
 	_next_update_funcs = {}
 
-	for _, func in pairs(current) do
-		func()
+	for key, func in pairs(current) do
+		-- an error must not drop the functions that are still queued
+		BLT:SafeCall("call_on_next_update '" .. tostring(key) .. "'", func)
 	end
 end
 

@@ -18,7 +18,7 @@ function c.TraverseXML(xml, parent_scope, callbacks, allow_unknown)
 				local first, last = val:find("#{%a[%w_]-}")
 				if not first then break end
 
-				local _name = val:sub(first + 2, last - first)
+				local _name = val:sub(first + 2, last - 1)
 				local target_var = scope[_name]
 
 				assert(target_var, "Trying to use missing parameter '"
@@ -33,7 +33,7 @@ function c.TraverseXML(xml, parent_scope, callbacks, allow_unknown)
 					BLT:Log(LogLevel.WARN, "Trying to append to missing parameter '" .. name
 							.. "' in " .. tag._doc.filename)
 				end
-				scope[name] = scope[name] .. val
+				scope[name] = (scope[name] or "") .. val
 			else
 				scope[name] = val
 			end
@@ -171,20 +171,36 @@ end
 ---@return boolean @`true` if the operation was successful, `false` otherwise
 function io.save_as_json(data, path)
 	local count = 0
-	for k, v in pairs(data) do
+	for k, v in pairs(type(data) == "table" and data or {}) do
 		count = count + 1
 	end
 
-	if data and count > 0 then
-		local file = io.open(path, "w+")
-		if file then
-			file:write(json.encode(data))
-			file:close()
-			return true
-		else
+	if count > 0 then
+		-- write to a temp file first, a crash while writing must not leave a truncated file
+		local temp_path = path .. ".tmp"
+		local file = io.open(temp_path, "w+")
+		if not file then
 			BLT:Log(LogLevel.ERROR, string.format("Could not save to file '%s', data may be lost", path))
 			return false
 		end
+
+		local written = file:write(json.encode(data))
+		file:close()
+		if not written then
+			os.remove(temp_path)
+			BLT:Log(LogLevel.ERROR, string.format("Could not write to file '%s', data may be lost", path))
+			return false
+		end
+
+		-- renaming over an existing file fails on windows
+		if not os.rename(temp_path, path) then
+			os.remove(path)
+			if not os.rename(temp_path, path) then
+				BLT:Log(LogLevel.ERROR, string.format("Could not replace file '%s', data may be lost", path))
+				return false
+			end
+		end
+		return true
 	else
 		BLT:Log(LogLevel.WARN, string.format("Skipped saving empty data table to '%s'", path))
 		return true

@@ -9,6 +9,9 @@ BLTNotificationsGui.DOWNLOADS_ICON = "teammate_interact_fill_large"
 
 local padding = 10
 
+-- a swipe is running, shared by all instances so it must be reset whenever one can no longer finish it
+local animating = false
+
 -- Copied from NewHeistsGui
 local SPOT_W = 32
 local SPOT_H = 8
@@ -42,6 +45,7 @@ end
 
 function BLTNotificationsGui:_layout()
 	self._enabled = true
+	animating = false
 
 	-- Get player profile panel
 	local profile_panel = managers.menu_component._player_profile_gui and
@@ -240,11 +244,22 @@ end
 function BLTNotificationsGui:remove_notification(uid)
 	local _, idx = self:_get_notification(uid)
 	if idx then
+		-- the panel of a running swipe may be the one that is removed
+		animating = false
 		local notif = self._notifications[idx]
 		self._content_panel:remove(notif.panel:get_engine_panel())
 
 		table.remove(self._notifications, idx)
 		self._notifications_count = table.size(self._notifications)
+
+		-- the shown notification may be gone or the index out of range, show one that exists
+		if self._current > self._notifications_count then
+			self._current = math.max(self._notifications_count, 1)
+		end
+		for i, other in ipairs(self._notifications) do
+			other.panel:set_visible(i == self._current)
+		end
+
 		self:_update_bars()
 	end
 end
@@ -343,7 +358,7 @@ function BLTNotificationsGui:_move_to_notification(destination)
 	-- Start swap animation for next notification
 	local a = self._notifications[self._current]
 	local b = self._notifications[destination]
-	if not a.panel or not b.panel then
+	if not a or not b or not a.panel or not b.panel then
 		return
 	end
 
@@ -368,12 +383,16 @@ function BLTNotificationsGui:_move_to_notification(destination)
 end
 
 function BLTNotificationsGui:_move_notifications(dir)
+	if self._notifications_count < 1 then
+		self._queued = nil
+		return
+	end
 	self._queued = self._current + dir
 	while self._queued > self._notifications_count do
 		self._queued = self._queued - self._notifications_count
 	end
 	while self._queued < 1 do
-		self._queued = self._queued + 1
+		self._queued = self._queued + self._notifications_count
 	end
 end
 
@@ -381,7 +400,6 @@ function BLTNotificationsGui:_next_notification()
 	self:_move_notifications(1)
 end
 
-local animating
 function BLTNotificationsGui:update(t, dt)
 	-- Update download count
 	local pending_downloads_count = table.size(BLT.Downloads:pending_downloads())

@@ -107,15 +107,9 @@ end
 ---@param message string
 ---@param receivers? table
 function LuaNetworking:SendStringThroughChat(message, receivers)
-	local message_len = message:len()
-	if message_len > LuaNetworking._max_message_len then
-		local message_id = string.split(message, LuaNetworking.Split, nil, 3)[2]
-		BLT:Log(LogLevel.WARN, string.format("[LuaNetworking] Message with id '%s' exceeds maximum data length of %d (%d)", tostring(message_id), LuaNetworking._max_message_len, message_len))
-	end
-
 	for _, peer in pairs(receivers or self:GetPeers()) do
 		if peer:ip_verified() then
-			peer:send("send_chat_message", LuaNetworking.HiddenChannel, message)
+			self:_SendToPeer(peer, message)
 		end
 	end
 
@@ -155,6 +149,14 @@ end
 
 function LuaNetworking:ProcessAllPeers(sender, message, color, icon)
 	local splitData = string.split(message, LuaNetworking.Split, nil, 2)
+	-- chunking is handled here and never shows up as a message of its own
+	if splitData[2] == self.ChunkAnnounceId then
+		self:_OnChunkAnnounce(sender, splitData[3])
+		return
+	elseif splitData[2] == self.ChunkFragmentId then
+		self:_OnChunkFragment(sender, splitData[3])
+		return
+	end
 	Hooks:Call("NetworkReceivedData", sender, splitData[2], splitData[3])
 end
 
@@ -263,3 +265,247 @@ function string.ToVector3(string)
 	BLT:Log(LogLevel.WARN, "string.ToVector3 is deprecated and will be removed in a future version\n" .. debug.traceback())
 	return LuaNetworking:StringToVector3(string)
 end
+
+-- Chunking of messages that exceed the maximum data length
+--
+-- The chat rpc ("send_chat_message") takes a plain "string" parameter, which is limited to 255 characters.
+-- A longer message is split into fragments ("GNAP/NHF/...") for peers that announced ("GNAP/NHC/...")
+-- that they can reassemble them, the receiver processes the reassembled message like any other.
+-- Peers running an older SuperBLT get the message the way it always was sent (with a warning).
+
+LuaNetworking.ChunkAnnounceId = "NHC"
+LuaNetworking.ChunkFragmentId = "NHF"
+LuaNetworking._chunk_timeout = 30
+LuaNetworking._chunk_retry_time = 10 -- seconds before an unanswered announcement is repeated
+LuaNetworking._chunk_wait_time = 3 -- seconds an oversized message waits for the answer to our announcement
+LuaNetworking._chunk_max_buffers = 32 -- incomplete messages kept per sender
+LuaNetworking._chunk_next_uid = 0
+LuaNetworking._chunk_peers = {} -- peers that can reassemble fragments
+LuaNetworking._chunk_announced = {} -- peer id -> time our announcement was sent
+LuaNetworking._chunk_buffers = {} -- sender -> uid -> incomplete message
+LuaNetworking._chunk_pending = {} -- peer id -> messages held back until it is known if the peer can reassemble
+LuaNetworking._chunk_settled = {} -- peers that did not answer in time, oversized messages are not held back for them anymore
+
+---Tells a peer that we can reassemble fragments
+---@param peer table @Peer to announce to
+---@param reply_wanted boolean @If the peer should announce itself in return
+function LuaNetworking:AnnounceChunking(peer, reply_wanted)
+	local peer_id = peer:id()
+	local now = TimerManager:wall_running():time()
+	if not peer:ip_verified() or (reply_wanted and self._chunk_announced[peer_id] and now - self._chunk_announced[peer_id] < self._chunk_retry_time) then
+		return
+	end
+
+	if reply_wanted then
+		self._chunk_announced[peer_id] = now
+	end
+	peer:send("send_chat_message", self.HiddenChannel, self.AllPeersString:format(self.AllPeers, self.ChunkAnnounceId, reply_wanted and "1" or "0"))
+end
+
+---Splits a formatted message into messages that fit the limit
+---@param message string
+---@return string[]? @The fragments, or `nil` if the message can not be split
+function LuaNetworking:_FragmentMessage(message)
+	self._chunk_next_uid = self._chunk_next_uid % 99999 + 1
+	local uid = self._chunk_next_uid
+
+	-- header: uid|part|parts|, sized for up to 999 parts
+	local overhead = self.AllPeersString:format(self.AllPeers, self.ChunkFragmentId, ""):len() + string.format("%d|999|999|", uid):len()
+	local chunk_len = self._max_message_len - overhead
+	if chunk_len < 16 then
+		return
+	end
+
+	local pieces = {}
+	local pos = 1
+	while pos <= message:len() do
+		local stop = math.min(pos + chunk_len - 1, message:len())
+		if stop < message:len() then
+			-- do not cut through a multibyte character
+			while stop > pos do
+				local next_byte = message:byte(stop + 1)
+				if next_byte < 0x80 or next_byte >= 0xC0 then
+					break
+				end
+				stop = stop - 1
+			end
+		end
+		table.insert(pieces, message:sub(pos, stop))
+		pos = stop + 1
+	end
+
+	local parts = #pieces
+	if parts > 999 then
+		return
+	end
+
+	local fragments = {}
+	for i, piece in ipairs(pieces) do
+		fragments[i] = self.AllPeersString:format(self.AllPeers, self.ChunkFragmentId, string.format("%d|%d|%d|%s", uid, i, parts, piece))
+	end
+	return fragments
+end
+
+function LuaNetworking:_FlushId(peer_id)
+	return "LuaNetworking.chunk_flush_" .. tostring(peer_id)
+end
+
+---Sends one message to a peer, oversized ones are fragmented if the peer supports it
+---If that is not known yet the message is held back, and everything that follows it to keep the order
+---@param peer table
+---@param message string
+function LuaNetworking:_SendToPeer(peer, message)
+	local peer_id = peer:id()
+
+	local pending = self._chunk_pending[peer_id]
+	if pending then
+		table.insert(pending, message)
+		return
+	end
+
+	if message:len() > self._max_message_len and not self._chunk_peers[peer_id] and not self._chunk_settled[peer_id] then
+		self._chunk_pending[peer_id] = { message }
+		self:AnnounceChunking(peer, true)
+		DelayedCalls:Add(self:_FlushId(peer_id), self._chunk_wait_time, function()
+			self:_FlushPending(peer_id, true)
+		end)
+		return
+	end
+
+	self:_DeliverToPeer(peer, message)
+end
+
+function LuaNetworking:_DeliverToPeer(peer, message)
+	if message:len() > self._max_message_len then
+		local fragments = self._chunk_peers[peer:id()] and self:_FragmentMessage(message)
+		if fragments then
+			for _, fragment in ipairs(fragments) do
+				peer:send("send_chat_message", self.HiddenChannel, fragment)
+			end
+			return
+		end
+
+		if self._chunk_last_warned ~= message then
+			self._chunk_last_warned = message
+			local message_id = string.split(message, self.Split, nil, 3)[2]
+			BLT:Log(LogLevel.WARN, string.format("[LuaNetworking] Message with id '%s' exceeds maximum data length of %d (%d)", tostring(message_id), self._max_message_len, message:len()))
+		end
+	end
+
+	peer:send("send_chat_message", self.HiddenChannel, message)
+end
+
+---Sends the messages held back for a peer
+---@param peer_id integer
+---@param timed_out boolean @The peer did not answer our announcement in time
+function LuaNetworking:_FlushPending(peer_id, timed_out)
+	local pending = self._chunk_pending[peer_id]
+	if not pending then
+		return
+	end
+
+	self._chunk_pending[peer_id] = nil
+	DelayedCalls:Remove(self:_FlushId(peer_id))
+
+	if timed_out and not self._chunk_peers[peer_id] then
+		self._chunk_settled[peer_id] = true
+	end
+
+	local peer = self:GetPeers()[peer_id]
+	if peer and peer:ip_verified() then
+		for _, message in ipairs(pending) do
+			self:_DeliverToPeer(peer, message)
+		end
+	end
+end
+
+function LuaNetworking:_OnChunkAnnounce(sender, data)
+	self._chunk_peers[sender] = true
+
+	if data == "1" then
+		local peer = self:GetPeers()[sender]
+		if peer then
+			self:AnnounceChunking(peer, false)
+		end
+	end
+
+	self:_FlushPending(sender, false)
+end
+
+function LuaNetworking:_OnChunkFragment(sender, data)
+	local uid, part, parts, rest = tostring(data):match("^(%d+)|(%d+)|(%d+)|(.*)$")
+	uid, part, parts = tonumber(uid), tonumber(part), tonumber(parts)
+	if not (uid and part and parts) or part < 1 or part > parts or parts > 999 then
+		return
+	end
+
+	local now = TimerManager:wall_running():time()
+	local buffers = self._chunk_buffers[sender] or {}
+	self._chunk_buffers[sender] = buffers
+	for key, buffer in pairs(buffers) do
+		if now - buffer.time > self._chunk_timeout then
+			buffers[key] = nil
+		end
+	end
+
+	local buffer = buffers[uid]
+	if not buffer or buffer.parts ~= parts then
+		if table.size(buffers) >= self._chunk_max_buffers then
+			return
+		end
+		buffer = { time = now, parts = parts, count = 0, pieces = {} }
+		buffers[uid] = buffer
+	end
+
+	if not buffer.pieces[part] then
+		buffer.pieces[part] = rest
+		buffer.count = buffer.count + 1
+	end
+
+	if buffer.count == buffer.parts then
+		buffers[uid] = nil
+		local message = table.concat(buffer.pieces)
+
+		-- chunking messages are never allowed inside a reassembled message (nesting)
+		local split_data = string.split(message, self.Split, nil, 2)
+		if split_data[1] == self.AllPeers and (split_data[2] == self.ChunkAnnounceId or split_data[2] == self.ChunkFragmentId) then
+			return
+		end
+
+		self:ProcessChatString(sender, message)
+	end
+end
+
+---Forgets everything known about chunking support, of one peer or of all
+---Peer ids are reused (the host is always 1), so the state must not outlive the peer or the session
+---@param peer_id integer? @Peer to forget, `nil` for all
+function LuaNetworking:_ResetChunkState(peer_id)
+	if peer_id == nil then
+		for pending_id in pairs(self._chunk_pending) do
+			DelayedCalls:Remove(self:_FlushId(pending_id))
+		end
+		self._chunk_peers = {}
+		self._chunk_announced = {}
+		self._chunk_buffers = {}
+		self._chunk_pending = {}
+		self._chunk_settled = {}
+		return
+	end
+
+	if self._chunk_pending[peer_id] then
+		DelayedCalls:Remove(self:_FlushId(peer_id))
+	end
+	self._chunk_peers[peer_id] = nil
+	self._chunk_announced[peer_id] = nil
+	self._chunk_buffers[peer_id] = nil
+	self._chunk_pending[peer_id] = nil
+	self._chunk_settled[peer_id] = nil
+end
+
+Hooks:Add("BaseNetworkSessionOnPeerRemoved", "BLT.LuaNetworking.chunk_peer_removed", function(peer, peer_id)
+	LuaNetworking:_ResetChunkState(peer_id)
+end)
+
+Hooks:Add("BaseNetworkSessionOnEnteredLobby", "BLT.LuaNetworking.chunk_session_start", function()
+	LuaNetworking:_ResetChunkState()
+end)

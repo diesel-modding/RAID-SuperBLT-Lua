@@ -88,7 +88,7 @@ function MenuCallbackHandler:blt_update_dll_dialog(update)
 end
 
 function MenuCallbackHandler:clbk_goto_paydaymods_download(update_url)
-	os.execute("cmd /c start " .. update_url)
+	Utils.OpenUrl(update_url)
 end
 
 --------------------------------------------------------------------------------

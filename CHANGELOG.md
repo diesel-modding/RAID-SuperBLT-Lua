@@ -4,6 +4,21 @@ This lists the changes between different versions of the RAID-SuperBLT basemod,
 the changes for the DLL are listed in their own changelog.
 Contributors other than maintainers are listed in parenthesis after specific changes.
 
+## 2.4.0
+- `LuaNetworking` splits messages over the 255 character limit into fragments for peers that announce support (older versions still get the message as before, with a warning); what it knows about a peer is forgotten when the peer leaves or a new session starts, nested chunking messages are dropped
+- hooks: an error in one hooked function (`Hooks:Call`, `Hooks:ReturnCall`, pre and post hooks), delayed call or `call_on_next_update` function is logged (once every 5 seconds per error) and no longer keeps the others from running; new `BLT:SafeCall(what, func, ...)`
+- hooks: `Hooks:Remove` actually removes the hook (also while the hook is being called), a pre or post hook error no longer leaves stale return values behind, hooks added while a hook is called run in the same call
+- updates: a failed or unknown modworkshop update check finishes the "checking for updates" notification, a failed check of a single mod is no longer reported as up to date
+- downloads: the old installation is only removed once the new one is in place (restored if moving fails), a failed move no longer drops an unrelated pending download, the progress bar showed the wrong value
+- urls: only plain http(s) addresses are opened (`Utils.IsSafeUrl`), and quoted, so a mod contact like `https://a.b & cmd` can no longer run commands
+- `blt_data.txt` is written to a temp file first, so a crash while saving can no longer truncate it; the mod states are also saved if the wren file can not be written
+- XML: `#{name}` is substituted anywhere in a value (not only at its start), appending to a missing parameter no longer raises an error; `hook_id` is case insensitive, `*` hooks no longer raise an error
+- mods menu: closing it no longer leaks a workspace and a controller hotswap callback, a missing `contact` link target and equal sort keys are handled
+- notifications: removing the shown notification no longer leaves an invalid index, the swipe guard works
+- `MenuHelper`: `AddDivider` honors `no_text = false`, `AddSlider` without value, string back callbacks in `BuildMenu`, components with an update function are not updated twice
+- `RaidMenuHelper:LoadJson`, `LoadMenu` (also used by BeardLib's `<Menu>` module): invalid json is logged instead of raising an error, the class global is set, `get_value` and callbacks given as text work, menus can be loaded again (every menu component manager init)
+- smaller: keybinds without a key are not saved, a failing keybind callback is isolated, dependency callbacks get the dependency, mod errors are not listed twice, key binding while no menu is active
+
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back
 - mods menu: profile stepper moved between search field and download manager button (no longer overlaps the controller legend)

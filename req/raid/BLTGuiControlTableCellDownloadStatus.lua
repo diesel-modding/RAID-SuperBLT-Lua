@@ -89,7 +89,7 @@ function BLTGuiControlTableCellDownloadStatus:on_double_click(button)
 end
 
 function BLTGuiControlTableCellDownloadStatus:_on_download_state_changed(download)
-	local percent = (download.total_bytes or 0) / (download.bytes or 1)
+	local percent = math.min((download.bytes or 0) / math.max(download.total_bytes or 0, 1), 1)
 	if download.state == "complete" then
 		self:_update_complete(download, percent)
 	elseif download.state == "failed" then

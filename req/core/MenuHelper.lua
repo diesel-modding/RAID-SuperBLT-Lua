@@ -122,7 +122,7 @@ function MenuHelper:AddDivider(divider_data)
 	local data = {
 		type = "MenuItemDivider",
 		size = divider_data.size or 8,
-		no_text = divider_data.no_text or true
+		no_text = divider_data.no_text == nil or divider_data.no_text
 	}
 
 	local params = {
@@ -262,7 +262,7 @@ function MenuHelper:AddSlider(slider_data)
 
 	local menu = self:GetMenu(slider_data.menu_id)
 	local item = menu:create_item(data, params)
-	item:set_value(math.clamp(slider_data.value, data.min, data.max) or data.min)
+	item:set_value(slider_data.value ~= nil and math.clamp(slider_data.value, data.min, data.max) or data.min)
 	item._priority = slider_data.priority
 
 	if slider_data.disabled then
@@ -479,10 +479,12 @@ function MenuHelper:BuildMenu(menu_id, data)
 				if type(data.back_callback) == "table" then
 					for k, v in pairs(data.back_callback) do
 						if type(v) == "string" then
-							data.back_callback = MenuCallbackHandler[v]
+							v = MenuCallbackHandler[v]
 						end
 
-						table.insert(menu._parameters.back_callback, v)
+						if v then
+							table.insert(menu._parameters.back_callback, v)
+						end
 					end
 				else
 					if type(data.back_callback) == "string" then
@@ -822,7 +824,7 @@ function MenuHelper:AddComponent(name, clss, args)
 				return
 			end
 			this[u_name] = this[u_name] or clss:new(this._ws, this._fullscreen_ws, node, name, args)
-			if this[u_name].update then
+				if this[u_name].update and not table.contains(this._update_components, this[u_name]) then
 				table.insert(this._update_components, this[u_name])
 			end
 			if component then

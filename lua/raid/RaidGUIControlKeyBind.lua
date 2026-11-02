@@ -1,12 +1,19 @@
 Hooks:RegisterHook("CustomizeControllerOnKeySet")
 
+local function active_node_gui()
+	local menu = managers.menu:active_menu()
+	return menu and menu.renderer and menu.renderer:active_node_gui()
+end
+
 Hooks:PostHook(RaidGuiControlKeyBind, "activate_customize_controller", "BLT.RaidGuiControlKeyBind.activate_customize_controller", function(self)
 	self._skip_first_activate_key = true
 
 	-- NOTE: This isn't the prettiest way to do this, but there's no easy way to check
 	-- if we're binding a key otherwise...
-	local node_gui = managers.menu:active_menu().renderer:active_node_gui()
-	node_gui._listening_to_input = true
+	local node_gui = active_node_gui()
+	if node_gui then
+		node_gui._listening_to_input = true
+	end
 end)
 
 RaidGuiControlKeyBind._blt_orig_key_press = RaidGuiControlKeyBind._key_press
@@ -152,6 +159,8 @@ function RaidGuiControlKeyBind:_key_press(text, key, input_id, ...)
 end
 
 Hooks:PreHook(RaidGuiControlKeyBind, "_end_customize_controller", "BLT.RaidGuiControlKeyBind._end_customize_controller", function()
-	local node_gui = managers.menu:active_menu().renderer:active_node_gui()
-	node_gui._listening_to_input = false
+	local node_gui = active_node_gui()
+	if node_gui then
+		node_gui._listening_to_input = false
+	end
 end)

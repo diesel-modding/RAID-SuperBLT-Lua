@@ -102,6 +102,10 @@ function BLT:Setup()
 	-- Load saved data
 	if not self.save_data then
 		local save_file = BLTModManager.Constants:ModManagerSaveFile()
+		-- io.save_as_json writes a temp file first, it is all that is left if the game died right between removing and renaming
+		if not io.file_is_readable(save_file) and io.file_is_readable(save_file .. ".tmp") then
+			save_file = save_file .. ".tmp"
+		end
 		self.save_data = io.file_is_readable(save_file) and io.load_as_json(save_file) or {}
 	end
 
@@ -171,7 +175,7 @@ function BLT:RunHookTable(hooks_table, path)
 	if not hooks_table or not hooks_table[path] then
 		return false
 	end
-	for i, hook_data in pairs(hooks_table[path]) do
+	for i, hook_data in ipairs(hooks_table[path]) do
 		self:RunHookFile(path, hook_data)
 	end
 end
@@ -239,7 +243,7 @@ function BLT:FindMods()
 				if valid then
 					table.insert(mods_list, new_mod)
 				else
-					self:Log(LogLevel.ERROR, "[BLT] Attempted to load mod.txt or supermod.xml, mod is invalid." .. tostring(mod_path))
+					self:Log(LogLevel.ERROR, "[BLT] Attempted to load mod.txt or supermod.xml, mod is invalid. " .. tostring(mod_path))
 				end
 			end
 		end

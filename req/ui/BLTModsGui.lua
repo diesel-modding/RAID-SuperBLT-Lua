@@ -73,6 +73,14 @@ function BLTModsGui:close()
 		end
 	end
 
+	-- both are created per open and would leak
+	managers.controller:remove_hotswap_callback("blt_mods_gui")
+	if self._safe_rect_workspace then
+		Overlay:gui():destroy_workspace(self._safe_rect_workspace)
+		self._safe_rect_workspace = nil
+		self._safe_panel = nil
+	end
+
 	self._root_panel:clear()
 	self._root_panel.ctrls = {}
 	-- BLTModsGui.super.close(self) -- Nein!
@@ -808,7 +816,9 @@ function BLTModsGui:_mods_list_data_source(mode)
 
 	-- Sort mods/libs
 	table.sort(mods, function(mod1, mod2)
-		if mod1.mod:GetId() == "base" then
+		if mod1.mod == mod2.mod then
+			return false -- a comparison with itself must not be true
+		elseif mod1.mod:GetId() == "base" then
 			return true
 		elseif mod2.mod:GetId() == "base" then
 			return false
@@ -1414,7 +1424,7 @@ function BLTModsGui:_on_info_button_contact_clicked(i)
 	if not self._selected_mod:GetContact() or not self._selected_mod:IsContactWebsite() then
 		return
 	end
-	Utils.OpenUrlSafe(self._selected_mod:GetContact())
+	Utils.OpenUrlSafe(self._selected_mod:GetContactUrl())
 end
 
 function BLTModsGui:_on_info_button_toggle_auto_updates_clicked(i)
@@ -1444,6 +1454,10 @@ function BLTModsGui:clbk_check_for_updates_finished(cache)
 		name = data.mod:GetName()
 		-- An update for this mod needs updating
 		requires_update = data.requires_update or requires_update
+		-- a failed check must not be reported as "up to date"
+		if data.reason then
+			error_reason = data.reason
+		end
 
 		-- Add the update to the download manager
 		if data.requires_update then
@@ -1471,6 +1485,9 @@ function BLTModsGui:clbk_check_for_updates_finished(cache)
 end
 
 function BLTModsGui:on_controller_hotswap()
+	if not self._safe_panel then
+		return
+	end
 	local press_any_key_prompt = self._safe_panel:child("press_any_key_prompt")
 	if press_any_key_prompt then
 		press_any_key_prompt:stop()
