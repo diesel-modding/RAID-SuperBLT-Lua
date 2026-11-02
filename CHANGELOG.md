@@ -9,6 +9,7 @@ Contributors other than maintainers are listed in parenthesis after specific cha
 - hooks: an error in one hooked function (`Hooks:Call`, `Hooks:ReturnCall`, pre and post hooks), delayed call or `call_on_next_update` function is logged (once every 5 seconds per error) and no longer keeps the others from running; new `BLT:SafeCall(what, func, ...)`
 - hooks: `Hooks:Remove` actually removes the hook (also while the hook is being called), a pre or post hook error no longer leaves stale return values behind, hooks added while a hook is called run in the same call
 - updates: a failed or unknown modworkshop update check finishes the "checking for updates" notification, a failed check of a single mod is no longer reported as up to date
+- downloads: the old installation is only removed once the new one is in place (restored if moving fails), a failed move no longer drops an unrelated pending download, the progress bar showed the wrong value
 
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back
