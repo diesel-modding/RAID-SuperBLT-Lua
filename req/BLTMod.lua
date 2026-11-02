@@ -21,6 +21,15 @@ BLTMod._tags = {
 	tweak = "",
 }
 
+local function add_error(self, err)
+	for _, existing in ipairs(self._errors) do
+		if existing == err then
+			return
+		end
+	end
+	table.insert(self._errors, err)
+end
+
 function BLTMod:init(identifier, data, path)
 	if not identifier or not path then
 		return false
@@ -170,13 +179,13 @@ function BLTMod:PostInit()
 	-- The mod isn't enabled for the current platform
 	-- Check dependencies are installed for this mod
 	if not self:AreDependenciesInstalled() then
-		table.insert(self._errors, "blt_mod_missing_dependencies")
+		add_error(self, "blt_mod_missing_dependencies")
 		self:RetrieveDependencies()
 		self:SetEnabled(false, true)
 	end
 
 	if self.min_sblt_version and BLT:CompareVersions(BLT:GetBaseVersion(), self.min_sblt_version) == 2 then
-		table.insert(self._errors, "blt_mod_info_min_sblt_ver_not_met")
+		add_error(self, "blt_mod_info_min_sblt_ver_not_met")
 		self:SetEnabled(false, true)
 	end
 
@@ -647,7 +656,7 @@ function BLTMod:AreDependenciesInstalled()
 				if not mod:IsEnabled() then
 					installed = false
 					table.insert(self.disabled_dependencies, mod)
-					table.insert(self._errors, "blt_mod_dependency_disabled")
+					add_error(self, "blt_mod_dependency_disabled")
 				end
 				break
 			end
