@@ -301,6 +301,7 @@ end
 
 function BLTMod:AddHook(data_key, hook_id, script, destination, wildcards_destination, game)
 	self.hooks[data_key] = self.hooks[data_key] or {}
+	hook_id = hook_id and hook_id:lower() -- the require override looks hooks up in lower case
 
 	-- Add hook to info table
 	local unique = true
@@ -853,10 +854,10 @@ end
 function BLTMod:_load_hooks_xml(_scope, tag)
 	Utils.IO.TraverseXML(tag, _scope, {
 		pre = function(scope)
-			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.pre)
+			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.pre, BLT.hook_tables.wildcards)
 		end,
 		post = function(scope)
-			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.post)
+			self:AddHook("hooks", scope.hook_id, scope.script_path, BLT.hook_tables.post, BLT.hook_tables.wildcards)
 		end,
 		entry = function(scope)
 			BLT:RunHookFile(scope.script_path, {
