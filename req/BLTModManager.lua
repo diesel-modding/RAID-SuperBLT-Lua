@@ -293,9 +293,9 @@ Hooks:Add("BLTOnSaveData", "BLTOnSaveData.BLTModManager", function(save_data)
 	-- can't load our normal file, and it needs to know what's enabled before any Lua code runs.
 	local wren_file = io.open(path, "wb")
 
+	-- the mod states are saved either way
 	if not wren_file then
-		BLT:Log(LogLevel.ERROR, "Can't read " .. path)
-		return
+		BLT:Log(LogLevel.ERROR, "Can't write " .. path)
 	end
 
 	for _, mod in pairs(BLT.Mods:Mods()) do
@@ -311,12 +311,14 @@ Hooks:Add("BLTOnSaveData", "BLTOnSaveData.BLTModManager", function(save_data)
 			updates = updates
 		}
 
-		if not mod:IsEnabled() then
+		if wren_file and not mod:IsEnabled() then
 			wren_file:write(mod.path .. "supermod.xml" .. "\n")
 		end
 	end
 
-	wren_file:close()
+	if wren_file then
+		wren_file:close()
+	end
 end)
 
 --------------------------------------------------------------------------------

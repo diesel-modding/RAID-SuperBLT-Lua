@@ -102,6 +102,10 @@ function BLT:Setup()
 	-- Load saved data
 	if not self.save_data then
 		local save_file = BLTModManager.Constants:ModManagerSaveFile()
+		-- io.save_as_json writes a temp file first, it is all that is left if the game died right between removing and renaming
+		if not io.file_is_readable(save_file) and io.file_is_readable(save_file .. ".tmp") then
+			save_file = save_file .. ".tmp"
+		end
 		self.save_data = io.file_is_readable(save_file) and io.load_as_json(save_file) or {}
 	end
 
