@@ -14,6 +14,7 @@ Contributors other than maintainers are listed in parenthesis after specific cha
 - `blt_data.txt` is written to a temp file first, so a crash while saving can no longer truncate it; the mod states are also saved if the wren file can not be written
 - XML: `#{name}` is substituted anywhere in a value (not only at its start), appending to a missing parameter no longer raises an error; `hook_id` is case insensitive, `*` hooks no longer raise an error
 - mods menu: closing it no longer leaks a workspace and a controller hotswap callback, a missing `contact` link target and equal sort keys are handled
+- notifications: removing the shown notification no longer leaves an invalid index, the swipe guard works
 
 ## 2.3.0
 - mods menu: controller navigation as before 2.2.0 again (lists loop, shoulder buttons switch lists, triggers switch columns), controller X jumps into the profile stepper and back
